@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scanner Kamera POS UMKM</title>
-  <script id="barcodeLibrary" src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js"></script>
+  <script id="barcodeLibrary" src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
   <style>
     body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#111827;color:white}main{max-width:520px;margin:auto}#reader{background:#000;border-radius:12px;overflow:hidden;position:relative}#preview{width:100%;display:block;min-height:320px;object-fit:cover}button{border:0;border-radius:8px;padding:12px 16px;background:#2563eb;color:white;font-weight:bold;cursor:pointer}button:disabled{opacity:.5}#status{margin:12px 0;line-height:1.4}.ok{color:#86efac}.error{color:#fca5a5}.hint{font-size:13px;color:#d1d5db}
   </style>
@@ -26,16 +26,38 @@
     // GitHub Pages kadang gagal mengambil asset dari CDN tertentu. Siapkan fallback
     // sebelum tombol kamera dipakai agar error-nya tidak menjadi “library belum termuat”.
     const library=document.getElementById('barcodeLibrary');
+    library.addEventListener('load',()=>{
+      if(!window.ZXingBrowser) {
+        library.dispatchEvent(new Event('error'));
+      }
+    });
     library.addEventListener('error',()=>{
-      if(library.dataset.fallback) return;
+      if(library.dataset.fallback) {
+        status('Library barcode gagal dimuat. Periksa koneksi internet lalu refresh halaman.','error');
+        return;
+      }
       library.dataset.fallback='1';
-      library.src='https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js';
+      library.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
       status('Memuat library scanner…','');
     });
+    function ensureBarcodeLibrary(){
+      if(window.ZXingBrowser) return Promise.resolve();
+      if(library.dataset.loading) return library.dataset.loadingPromise;
+      library.dataset.loading='1';
+      status('Memuat library scanner...','');
+      library.dataset.loadingPromise=new Promise((resolve,reject)=>{
+        const fallback=document.createElement('script');
+        fallback.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
+        fallback.onload=()=>window.ZXingBrowser?resolve():reject(new Error('Library barcode tidak tersedia.'));
+        fallback.onerror=()=>reject(new Error('Library barcode gagal dimuat. Periksa koneksi internet.'));
+        document.head.appendChild(fallback);
+      });
+      return library.dataset.loadingPromise;
+    }
     async function startScanner(){
       sent=false;lastText='';lastAt=0;startButton.disabled=true;retryButton.style.display='none';
       try{
-        if(!window.ZXingBrowser) throw new Error('Library barcode belum termuat. Pastikan internet aktif, lalu refresh halaman.');
+        await ensureBarcodeLibrary();
         if(controls){try{controls.stop()}catch(e){}}
         reader=new ZXingBrowser.BrowserMultiFormatReader();
         const devices=await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
