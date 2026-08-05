@@ -4,113 +4,49 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scanner Kamera POS UMKM</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #111827; color: white; }
-    main { max-width: 440px; margin: auto; }
-    #reader { background: #000; border-radius: 12px; overflow: hidden; }
-    #reader video { width: 100% !important; object-fit: cover; }
-    button { border: 0; border-radius: 8px; padding: 12px 16px; background: #2563eb; color: white; font-weight: bold; cursor: pointer; }
-    #status { margin: 12px 0; color: #d1d5db; line-height: 1.4; }
-    .ok { color: #86efac !important; }
-    .error { color: #fca5a5 !important; }
+    body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#111827;color:white}main{max-width:520px;margin:auto}#reader{background:#000;border-radius:12px;overflow:hidden;position:relative}#preview{width:100%;display:block;min-height:320px;object-fit:cover}button{border:0;border-radius:8px;padding:12px 16px;background:#2563eb;color:white;font-weight:bold;cursor:pointer}button:disabled{opacity:.5}#status{margin:12px 0;line-height:1.4}.ok{color:#86efac}.error{color:#fca5a5}.hint{font-size:13px;color:#d1d5db}
   </style>
 </head>
 <body>
   <main>
     <h2>📷 Scanner Barcode</h2>
-    <p id="status">Tekan tombol, lalu izinkan akses kamera.</p>
+    <p id="status">Klik Aktifkan Kamera, lalu izinkan kamera.</p>
     <button id="startButton" type="button">Aktifkan Kamera</button>
-    <button id="retryButton" type="button" style="display:none;background:#0f766e;margin-left:6px">Coba Lagi</button>
-    <p style="font-size:13px;color:#d1d5db">Dekatkan barcode, pastikan seluruh garis terlihat. Gunakan tombol lampu/zoom jika tersedia.</p>
-    <div id="reader"></div>
+    <button id="retryButton" type="button" style="display:none;background:#0f766e">Coba Lagi</button>
+    <p class="hint">Dekatkan barcode sampai garis terlihat jelas. Scanner ini memakai decoder khusus barcode 1D/2D.</p>
+    <div id="reader"><video id="preview" autoplay muted playsinline></video></div>
   </main>
   <script>
-    const params = new URLSearchParams(location.search);
-    const target = params.get('target') || 'productBarcodeField';
-    const returnOrigin = params.get('returnOrigin') || '*';
-    const status = document.getElementById('status');
-    const startButton = document.getElementById('startButton');
-    const retryButton = document.getElementById('retryButton');
-    let scanner;
-    let sent = false;
-    let lastText = '';
-    let lastScanAt = 0;
-
-    const config = {
-      fps: 20,
-      qrbox: (w, h) => ({
-        width: Math.min(Math.floor(w * 0.96), 480),
-        height: Math.min(Math.floor(h * 0.82), 420)
-      }),
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.ITF,
-        Html5QrcodeSupportedFormats.QR_CODE
-      ],
-      showTorchButtonIfSupported: true,
-      showZoomSliderIfSupported: true,
-      disableFlip: false
-    };
-
-    function setStatus(text, className) {
-      status.textContent = text;
-      status.className = className || '';
-    }
-
-    async function startScanner() {
-      sent = false;
-      lastText = '';
-      lastScanAt = 0;
-      startButton.disabled = true;
-      retryButton.style.display = 'none';
-      try {
-        if (scanner) { try { await scanner.stop(); } catch (e) {} try { await scanner.clear(); } catch (e) {} }
-        const cameras = await Html5Qrcode.getCameras();
-        if (!cameras || !cameras.length) throw new Error('Tidak ada kamera yang terdeteksi oleh browser.');
-        const camera = cameras.find(c => /back|rear|environment|belakang/i.test(c.label)) || cameras[0];
-        scanner = new Html5Qrcode('reader');
-        await scanner.start(camera.id, config, onScan, onScanFailure);
-        setStatus('Kamera aktif — mencari barcode...', 'ok');
-      } catch (error) {
-        console.error(error);
-        setStatus('Kamera gagal [' + (error.name || 'Error') + ']: ' + (error.message || 'izin kamera ditolak') + '. Cek Windows Settings > Privacy & security > Camera.', 'error');
-        startButton.disabled = false;
-        retryButton.style.display = 'inline-block';
+    const params=new URLSearchParams(location.search),target=params.get('target')||'productBarcodeField',returnOrigin=params.get('returnOrigin')||'*';
+    const statusEl=document.getElementById('status'),startButton=document.getElementById('startButton'),retryButton=document.getElementById('retryButton');
+    let reader=null,controls=null,sent=false,lastText='',lastAt=0;
+    function status(text,cls){statusEl.textContent=text;statusEl.className=cls||''}
+    async function startScanner(){
+      sent=false;lastText='';lastAt=0;startButton.disabled=true;retryButton.style.display='none';
+      try{
+        if(!window.ZXingBrowser) throw new Error('Library barcode belum termuat. Refresh halaman.');
+        if(controls){try{controls.stop()}catch(e){}}
+        reader=new ZXingBrowser.BrowserMultiFormatReader();
+        const devices=await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+        if(!devices.length) throw new Error('Kamera tidak ditemukan.');
+        const chosen=devices.find(d=>/back|rear|environment|belakang/i.test(d.label))||devices[0];
+        const preview=document.getElementById('preview');
+        controls=await reader.decodeFromVideoDevice(chosen.deviceId,preview,(result,error)=>{
+          if(result&&result.getText()) onScan(result.getText());
+        });
+        status('Kamera aktif — mencari barcode...','ok');
+      }catch(error){
+        console.error(error);status('Scanner gagal: '+(error.message||error),'error');startButton.disabled=false;retryButton.style.display='inline-block';
       }
     }
-
-    let lastFailureMessageAt = 0;
-    function onScanFailure() {
-      const now = Date.now();
-      if (now - lastFailureMessageAt > 3000 && !sent) {
-        lastFailureMessageAt = now;
-        setStatus('Kamera aktif — arahkan barcode ke kotak...', 'ok');
-      }
+    async function onScan(text){
+      const now=Date.now();if(sent||!text||(text===lastText&&now-lastAt<1200))return;lastText=text;lastAt=now;sent=true;status('Barcode terbaca: '+text,'ok');
+      if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'umkm-barcode-scanned',barcode:text,target},returnOrigin);try{controls.stop()}catch(e){}setTimeout(()=>window.close(),700)}
+      else{status('Jendela POS tidak ditemukan. Buka scanner dari tombol Kamera di POS.','error');sent=false}
     }
-
-    async function onScan(decodedText) {
-      if (sent || !decodedText) return;
-      const now = Date.now();
-      if (decodedText === lastText && now - lastScanAt < 1200) return;
-      lastText = decodedText;
-      lastScanAt = now;
-      sent = true;
-      setStatus('Barcode terbaca: ' + decodedText, 'ok');
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({ type: 'umkm-barcode-scanned', barcode: decodedText, target }, returnOrigin);
-        try { await scanner.stop(); } catch (e) {}
-        setTimeout(() => window.close(), 700);
-      }
-    }
-
-    startButton.addEventListener('click', startScanner);
-    retryButton.addEventListener('click', startScanner);
+    startButton.addEventListener('click',startScanner);retryButton.addEventListener('click',startScanner);
   </script>
 </body>
 </html>
