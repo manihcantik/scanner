@@ -61,8 +61,17 @@
         if(reader){try{await reader.stop()}catch(e){}try{await reader.clear()}catch(e){}}
         document.getElementById('reader').innerHTML='';
         reader=new Html5Qrcode('reader');
-        const config={fps:15,qrbox:(w,h)=>({width:Math.min(Math.floor(w*.92),440),height:Math.min(Math.floor(h*.48),240)}),formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE],showTorchButtonIfSupported:true,showZoomSliderIfSupported:true};
-        try{await reader.start({facingMode:{exact:'environment'}},config,onScan,()=>{})}
+        const config={
+          fps:10,
+          qrbox:(w,h)=>({width:Math.min(Math.floor(w*.96),520),height:Math.min(Math.floor(h*.68),420)}),
+          formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.CODABAR,Html5QrcodeSupportedFormats.QR_CODE],
+          experimentalFeatures:{useBarCodeDetectorIfSupported:true},
+          showTorchButtonIfSupported:true,
+          showZoomSliderIfSupported:true,
+          rememberLastUsedCamera:true
+        };
+        const cameraConstraints={facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}};
+        try{await reader.start(cameraConstraints,config,onScan,()=>{})}
         catch(e){await reader.clear();reader=new Html5Qrcode('reader');await reader.start({facingMode:'environment'},config,onScan,()=>{})}
         status('Kamera aktif — mencari barcode...','ok');
       }catch(error){
