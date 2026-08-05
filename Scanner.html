@@ -21,7 +21,8 @@
     <h2>📷 Scanner Barcode</h2>
     <p id="status">Tekan tombol, lalu izinkan akses kamera.</p>
     <button id="startButton" type="button">Aktifkan Kamera</button>
-    <p style="font-size:13px;color:#d1d5db">Pegang barcode lurus, cukup terang, dan masuk ke area kotak.</p>
+    <button id="retryButton" type="button" style="display:none;background:#0f766e;margin-left:6px">Coba Lagi</button>
+    <p style="font-size:13px;color:#d1d5db">Dekatkan barcode, pastikan seluruh garis terlihat. Gunakan tombol lampu/zoom jika tersedia.</p>
     <div id="reader"></div>
   </main>
   <script>
@@ -30,25 +31,18 @@
     const returnOrigin = params.get('returnOrigin') || '*';
     const status = document.getElementById('status');
     const startButton = document.getElementById('startButton');
+    const retryButton = document.getElementById('retryButton');
     let scanner;
     let sent = false;
+    let lastText = '';
+    let lastScanAt = 0;
 
     const config = {
-      fps: 15,
+      fps: 20,
       qrbox: (w, h) => ({
-        width: Math.min(Math.floor(w * 0.92), 440),
-        height: Math.min(Math.floor(h * 0.48), 240)
+        width: Math.min(Math.floor(w * 0.96), 480),
+        height: Math.min(Math.floor(h * 0.82), 420)
       }),
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.ITF,
-        Html5QrcodeSupportedFormats.QR_CODE
-      ],
       showTorchButtonIfSupported: true,
       showZoomSliderIfSupported: true,
       disableFlip: false
@@ -60,26 +54,42 @@
     }
 
     async function startScanner() {
+      sent = false;
+      lastText = '';
+      lastScanAt = 0;
       startButton.disabled = true;
+      retryButton.style.display = 'none';
       try {
+        if (scanner) { try { await scanner.stop(); } catch (e) {} try { await scanner.clear(); } catch (e) {} }
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras || !cameras.length) throw new Error('Tidak ada kamera yang terdeteksi oleh browser.');
+        const camera = cameras.find(c => /back|rear|environment|belakang/i.test(c.label)) || cameras[0];
         scanner = new Html5Qrcode('reader');
-        try {
-          await scanner.start({ facingMode: { exact: 'environment' } }, config, onScan, () => {});
-        } catch (firstError) {
-          await scanner.clear();
-          scanner = new Html5Qrcode('reader');
-          await scanner.start({ facingMode: 'environment' }, config, onScan, () => {});
-        }
+        await scanner.start(camera.id, config, onScan, onScanFailure);
         setStatus('Kamera aktif — mencari barcode...', 'ok');
       } catch (error) {
         console.error(error);
-        setStatus('Kamera gagal: ' + (error.message || 'izin kamera ditolak'), 'error');
+        setStatus('Kamera gagal [' + (error.name || 'Error') + ']: ' + (error.message || 'izin kamera ditolak') + '. Cek Windows Settings > Privacy & security > Camera.', 'error');
         startButton.disabled = false;
+        retryButton.style.display = 'inline-block';
+      }
+    }
+
+    let lastFailureMessageAt = 0;
+    function onScanFailure() {
+      const now = Date.now();
+      if (now - lastFailureMessageAt > 3000 && !sent) {
+        lastFailureMessageAt = now;
+        setStatus('Kamera aktif — arahkan barcode ke kotak...', 'ok');
       }
     }
 
     async function onScan(decodedText) {
       if (sent || !decodedText) return;
+      const now = Date.now();
+      if (decodedText === lastText && now - lastScanAt < 1200) return;
+      lastText = decodedText;
+      lastScanAt = now;
       sent = true;
       setStatus('Barcode terbaca: ' + decodedText, 'ok');
       if (window.opener && !window.opener.closed) {
@@ -90,6 +100,7 @@
     }
 
     startButton.addEventListener('click', startScanner);
+    retryButton.addEventListener('click', startScanner);
   </script>
 </body>
 </html>
