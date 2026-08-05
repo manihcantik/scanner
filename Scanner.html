@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Scanner Kamera POS UMKM</title>
-  <script id="barcodeLibrary" src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+  <script id="barcodeLibrary" src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     body{font-family:Arial,sans-serif;margin:0;padding:20px;background:#111827;color:white}main{max-width:520px;margin:auto}#reader{background:#000;border-radius:12px;overflow:hidden;position:relative}#preview{width:100%;display:block;min-height:320px;object-fit:cover}button{border:0;border-radius:8px;padding:12px 16px;background:#2563eb;color:white;font-weight:bold;cursor:pointer}button:disabled{opacity:.5}#status{margin:12px 0;line-height:1.4}.ok{color:#86efac}.error{color:#fca5a5}.hint{font-size:13px;color:#d1d5db}
   </style>
@@ -27,7 +27,7 @@
     // sebelum tombol kamera dipakai agar error-nya tidak menjadi “library belum termuat”.
     const library=document.getElementById('barcodeLibrary');
     library.addEventListener('load',()=>{
-      if(!window.ZXingBrowser) {
+      if(!window.Html5Qrcode) {
         library.dispatchEvent(new Event('error'));
       }
     });
@@ -37,18 +37,18 @@
         return;
       }
       library.dataset.fallback='1';
-      library.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
+      library.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
       status('Memuat library scanner…','');
     });
     function ensureBarcodeLibrary(){
-      if(window.ZXingBrowser) return Promise.resolve();
+      if(window.Html5Qrcode) return Promise.resolve();
       if(library.dataset.loading) return library.dataset.loadingPromise;
       library.dataset.loading='1';
       status('Memuat library scanner...','');
       library.dataset.loadingPromise=new Promise((resolve,reject)=>{
         const fallback=document.createElement('script');
-        fallback.src='https://unpkg.com/@zxing/browser@0.1.5/umd/zxing-browser.min.js';
-        fallback.onload=()=>window.ZXingBrowser?resolve():reject(new Error('Library barcode tidak tersedia.'));
+        fallback.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        fallback.onload=()=>window.Html5Qrcode?resolve():reject(new Error('Library barcode tidak tersedia.'));
         fallback.onerror=()=>reject(new Error('Library barcode gagal dimuat. Periksa koneksi internet.'));
         document.head.appendChild(fallback);
       });
@@ -58,15 +58,12 @@
       sent=false;lastText='';lastAt=0;startButton.disabled=true;retryButton.style.display='none';
       try{
         await ensureBarcodeLibrary();
-        if(controls){try{controls.stop()}catch(e){}}
-        reader=new ZXingBrowser.BrowserMultiFormatReader();
-        const devices=await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-        if(!devices.length) throw new Error('Kamera tidak ditemukan.');
-        const chosen=devices.find(d=>/back|rear|environment|belakang/i.test(d.label))||devices[0];
-        const preview=document.getElementById('preview');
-        controls=await reader.decodeFromVideoDevice(chosen.deviceId,preview,(result,error)=>{
-          if(result&&result.getText()) onScan(result.getText());
-        });
+        if(reader){try{await reader.stop()}catch(e){}try{await reader.clear()}catch(e){}}
+        document.getElementById('reader').innerHTML='';
+        reader=new Html5Qrcode('reader');
+        const config={fps:15,qrbox:(w,h)=>({width:Math.min(Math.floor(w*.92),440),height:Math.min(Math.floor(h*.48),240)}),formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE],showTorchButtonIfSupported:true,showZoomSliderIfSupported:true};
+        try{await reader.start({facingMode:{exact:'environment'}},config,onScan,()=>{})}
+        catch(e){await reader.clear();reader=new Html5Qrcode('reader');await reader.start({facingMode:'environment'},config,onScan,()=>{})}
         status('Kamera aktif — mencari barcode...','ok');
       }catch(error){
         console.error(error);status('Scanner gagal: '+(error.message||error),'error');startButton.disabled=false;retryButton.style.display='inline-block';
@@ -74,7 +71,7 @@
     }
     async function onScan(text){
       const now=Date.now();if(sent||!text||(text===lastText&&now-lastAt<1200))return;lastText=text;lastAt=now;sent=true;status('Barcode terbaca: '+text,'ok');
-      if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'umkm-barcode-scanned',barcode:text,target},returnOrigin);try{controls.stop()}catch(e){}setTimeout(()=>window.close(),700)}
+      if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'umkm-barcode-scanned',barcode:text,target},returnOrigin);try{await reader.stop()}catch(e){}setTimeout(()=>window.close(),700)}
       else{status('Jendela POS tidak ditemukan. Buka scanner dari tombol Kamera di POS.','error');sent=false}
     }
     startButton.addEventListener('click',startScanner);retryButton.addEventListener('click',startScanner);
