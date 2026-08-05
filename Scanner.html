@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scanner Kamera POS UMKM</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #111827; color: white; }
+    main { max-width: 440px; margin: auto; }
+    #reader { background: #000; border-radius: 12px; overflow: hidden; }
+    #reader video { width: 100% !important; object-fit: cover; }
+    button { border: 0; border-radius: 8px; padding: 12px 16px; background: #2563eb; color: white; font-weight: bold; cursor: pointer; }
+    #status { margin: 12px 0; color: #d1d5db; line-height: 1.4; }
+    .ok { color: #86efac !important; }
+    .error { color: #fca5a5 !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h2>📷 Scanner Barcode</h2>
+    <p id="status">Tekan tombol, lalu izinkan akses kamera.</p>
+    <button id="startButton" type="button">Aktifkan Kamera</button>
+    <p style="font-size:13px;color:#d1d5db">Pegang barcode lurus, cukup terang, dan masuk ke area kotak.</p>
+    <div id="reader"></div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const target = params.get('target') || 'productBarcodeField';
+    const returnOrigin = params.get('returnOrigin') || '*';
+    const status = document.getElementById('status');
+    const startButton = document.getElementById('startButton');
+    let scanner;
+    let sent = false;
+
+    const config = {
+      fps: 15,
+      qrbox: (w, h) => ({
+        width: Math.min(Math.floor(w * 0.92), 440),
+        height: Math.min(Math.floor(h * 0.48), 240)
+      }),
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.QR_CODE
+      ],
+      showTorchButtonIfSupported: true,
+      showZoomSliderIfSupported: true,
+      disableFlip: false
+    };
+
+    function setStatus(text, className) {
+      status.textContent = text;
+      status.className = className || '';
+    }
+
+    async function startScanner() {
+      startButton.disabled = true;
+      try {
+        scanner = new Html5Qrcode('reader');
+        try {
+          await scanner.start({ facingMode: { exact: 'environment' } }, config, onScan, () => {});
+        } catch (firstError) {
+          await scanner.clear();
+          scanner = new Html5Qrcode('reader');
+          await scanner.start({ facingMode: 'environment' }, config, onScan, () => {});
+        }
+        setStatus('Kamera aktif — mencari barcode...', 'ok');
+      } catch (error) {
+        console.error(error);
+        setStatus('Kamera gagal: ' + (error.message || 'izin kamera ditolak'), 'error');
+        startButton.disabled = false;
+      }
+    }
+
+    async function onScan(decodedText) {
+      if (sent || !decodedText) return;
+      sent = true;
+      setStatus('Barcode terbaca: ' + decodedText, 'ok');
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'umkm-barcode-scanned', barcode: decodedText, target }, returnOrigin);
+        try { await scanner.stop(); } catch (e) {}
+        setTimeout(() => window.close(), 700);
+      }
+    }
+
+    startButton.addEventListener('click', startScanner);
+  </script>
+</body>
+</html>
